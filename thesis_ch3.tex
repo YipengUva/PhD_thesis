@@ -1,0 +1,365 @@
+\chapter{Robust logistic PCA model} \label{chapter:3}
+Although the projection based logistic PCA model works well in our previous data analysis, the idea of projection in the context of multivariate binary data is not straightforward. Furthermore, the results of the model are related to the specification of the parameter $m$, which is the approximation of the infinity in the saturated model. In addition, this approach is difficult to be generalized to the data fusion of multiple data sets with different data types. Therefore, in this chapter we focus on developing a robust version of logistic PCA model without the involvement of projection.
+
+The non-robustness of the standard logistic PCA model, manifested as some estimated parameters diverge towards infinity, is because of the used exact low rank constraint, which is specified as the multiplication of low rank score and loading matrices. Therefore, we propose to fit a logistic PCA model through non-convex singular value thresholding to alleviate the non-robustness issue. An efficient MM algorithm is implemented to fit the model and a missing value based CV procedure is introduced for the model selection. In addition, we re-express the logistic PCA model based on the latent variable interpretation of the generalized linear model on binary data. The multivariate binary data set is assumed to be the sign observation of an unobserved quantitative data set, on which a low rank structure is assumed to exist. The latent variable interpretation of the logistic PCA model not only makes the assumption of low rank structure easier to understand, but also provides us a way to define signal-to-noise ratio in multivariate binary data simulation. Our experiments on realistic simulations of imbalanced binary data and low signal-to-noise ratio show that the CV error based model selection procedure is successful in selecting the proposed model. And the selected model demonstrates superior performance in recovering the underlying low rank structure compared to models with convex nuclear norm penalty and exact low rank constraint. Finally, a binary CNA data set is used to illustrate the proposed methodology in practice.
+\footnote{This chapter is based on Y.~Song, J.~A. Westerhuis, and A.~K. Smilde, ``Logistic principal component analysis via non-convex singular value thresholding,'' {\em arXiv preprint
+  arXiv:1902.09486}, 2019.}
+
+\section{Background}
+Logistic PCA \cite{schein2003generalized,de2006principal} is motivated from the probabilistic interpretation of the classical PCA model with Gaussian distributed error. The extension of the classical PCA model to the logistic PCA model is similar to the extension of linear regression to logistic linear regression. In the classical PCA model, the low rank constraint is imposed on the conditional mean of the observed quantitative data set, while in the logistic PCA model, the low rank constraint is imposed on the logit transform of the conditional mean of the observed binary data. \textcolor{blue}{Age: ?conditional mean. Reply: In the probabilistic interpretation of PCA, we have $E(\mathbf{X}|\mathbf{\Theta}) = \mathbf{\Theta} = \mathbf{1}\bm{\mu}^{T} \mathbf{AB}^{T}$. And $E(\mathbf{X}|\mathbf{\Theta})$ is the conditional mean.} Therefore, the logistic PCA model can also be re-expressed in a similar way as the latent variable interpretation of the generalized linear models (GLMs) on binary data \cite{agresti2013categorical}. \textcolor{blue}{Age: the following interpretation has a continuous underlying process. Reply: yes. However, we didn't make a distinction of continuous and discrete underlying process here. Only in the following latent variable interpretation section, we talk about how to relate the latent variable interpretation to different generating processes.} In logistic PCA, the observed binary data set can be assumed as the sign observation of an unobserved quantitative data set, on which low rank structure is assumed to exist. This intuitive latent variable interpretation not only facilitates the understanding of the low rank structure in the logistic PCA model, but also provides a way to define the signal-to-noise ratio (SNR) in the simulation of multivariate binary data.
+
+However, the standard logistic PCA model with the exact low rank constraint, which is expressed as the multiplication of two low rank matrices, is prone to overfitting, leading to divergence of some estimated parameters towards infinity \cite{de2006principal, groenen2016multinomial}. The same overfitting problem also happens for the logistic linear regression model. If two classes of the outcome are linearly separable with respect to an explanatory variable, the corresponding coefficient of this variable tends to go to infinity \cite{agresti2013categorical}. A common trick is adding a ridge regression (quadratic) type penalty on the coefficient vector to alleviate the overfitting issue. If we apply the same trick on the logistic PCA model, the quadratic penalty on the loading matrix is equivalent to a quadratic penalty on the singular values of a matrix, which is the multiplication of the score and loading matrices. Details will be shown later. Therefore, it is possible to derive a robust logistic PCA model via the regularization of the singular values. \cite{davenport20141} proposed to use a nuclear norm penalty in the low rank matrix approximation framework for the binary matrix completion problem. The proposed method is similar to the logistic PCA model except that the column offset term is not included and the exact low rank constraint is replaced by its convex relaxation, the nuclear norm penalty. The nuclear norm penalty, which is equivalent to applying a lasso penalty on the singular values of a matrix, induces low rank estimation and constrains the scale of non-zeros singular values simultaneously. However, a lasso type penalty shrinks all parameters to the same degree, leading to biased parameter estimation. This behavior will further make the CV error or the prediction error based model selection procedure inconsistent \cite{meinshausen2010stability}. On the other hand, non-convex penalties, many of which are concave functions, are capable to simultaneously achieve nearly unbiased parameter estimation and sparsity \cite{fan2001variable,armagan2013generalized}. Recent research \cite{shabalin2013reconstruction, josse2016adaptive} has also shown the superiority of non-convex singular value thresholding (applying non-convex penalties on the singular values of a matrix) in recovering the true signal in a low rank approximation framework under Gaussian noise. In this chapter, we propose to fit the logistic PCA model via non-convex singular value thresholding as a way to alleviate the overfitting problem and to induce low rank estimation simultaneously. A MM algorithm is implemented to fit the proposed model and an option for missing values is included. In the developed algorithm, the updating of all the parameters has an analytical form solution, and the loss function is guaranteed to decrease in each iteration. After that, a missing value based CV procedure is introduced for the model selection.
+
+Based on the latent variable interpretation of the logistic PCA model, realistic multivariate binary data sets (low SNR, imbalanced binary data) are simulated to evaluate the performance of the proposed model and the corresponding model selection procedure. It turns out that the CV error based model selection procedure is successful in the selection of the proposed model, and the selected model has superior performance in recovering the underlying low rank structure compared to the model with convex nuclear norm penalty and exact low rank constraint. Furthermore, the performance of the logistic PCA model as a function of the SNR in multivariate binary data simulation is fully characterized. Finally, a binary CNA data set is used to illustrate the proposed methodology in practise.
+
+\section{Latent variable interpretation of models on binary data}
+\subsection{Latent variable interpretation of the GLMs on binary data}
+A univariate binary response variable $y$ is assumed to follow a Bernoulli distribution with parameter $\pi$, $y \sim \text{Bernoulli}(\pi)$. $\mathbf{x}$ is a multivariate explanatory variable and $\mathbf{x} \in \mathbb{R}^J$. \textcolor{red}{Johan: x is a multivariate observation? Reply: it is taken as multivariate variable here.} For the GLMs on binary data, we assume that the nonlinear transformation of the conditional mean of $y$ is a linear function of $\mathbf{x}$, $h(\text{E}(y|\mathbf{x})) = \mathbf{x}^{\text{T}} \bm{\beta}$, in which $h()$ is the link function, $\text{E}(y|\mathbf{x})$ is the conditional mean, and $\bm{\beta}$ is a $J$ dimensional coefficient vector. If the inverse function of $h()$ is $\phi()$, we have $\text{E}(y|x) = \phi(x^{\text{T}}\bm{\beta})$. If the logit link is used, $\phi(\theta) = (1+\exp(-\theta))^{-1}$, which is the logistic linear regression model, and $x^{\text{T}}\bm{\beta}$ can be interpreted as the log-odds, which is the natural parameter of Bernoulli distribution expressed in exponential family distribution form. If the probit link is used, $\phi(\theta) = \Phi(\theta)$, in which $\Phi(\theta)$ is the cumulative density function (CDF) of the standard normal distribution, which is the probit linear regression model.
+
+The fact that the inverse link function $\phi()$ can be interpreted as the CDF of a specific probability distribution, motivates the latent variable interpretation of the logistic or probit linear regression \cite{agresti2013categorical}. $y$ can be assumed as the sign observation of a quantitative latent variable $y^{\ast}$, which has a linear relationship with the explanatory variable $\mathbf{x}$. Taking the probit linear regression as an example, the latent variable interpretation can be expressed as,
+\begin{equation*}
+\begin{split}
+        y^{\ast} &= \mathbf{x}^{\text{T}}\beta + \epsilon\\
+ \epsilon &\sim \text{N}(0,1) \\
+        y &= \mathbb{1}{(y^{\ast}>0)},
+\end{split}
+\end{equation*}
+in which $y^{\ast}$ is the latent variable, $\epsilon$ is the error term, and $\mathbb{1}()$ is the indicator function. The probability for the observation $y = 1$ is $\text{Pr}(y=1|\mathbf{x}^{\text{T}}\bm{\beta}) = \text{Pr}(y^{\ast} \geq 0)= \Phi(\mathbf{x}^{\text{T}}\bm{\beta})$. A similar latent variable interpretation can be applied to the logistic linear regression model by assuming that the error term $\epsilon$ follows the standard logistic distribution. The probability density function of the logistic distribution can be expressed as,
+\begin{equation*}
+  p(\epsilon) = \frac{\exp(- \frac{\epsilon-\mu}{\sigma})}{\sigma(1+\exp(-\frac{\epsilon-\mu}{\sigma}))^2},
+\end{equation*}
+in which $\mu$ and $\sigma$ are the location and scale parameters. In the standard logistic distribution, $\mu=0$, $\sigma=1$. The inverse-logit function $\phi()$ is the CDF of the standard logistic distribution. The assumption of $\mu=0$ for the $\epsilon$ is reasonable since we want to use the linear function $\mathbf{x}^{\text{T}}\bm{\beta}$ to capture the conditional mean of $y^{\ast}$. The assumption of $\sigma=1$ for the $\epsilon$ seems restrictive, however scaling the estimated $\hat{\bm{\beta}}$ by a positive constant as $\hat{\bm{\beta}}/\sigma$ will not change the conclusion of the model. Since the assumption of logistic distributed noise is not very straightforward, the latent variable interpretation of the logistic linear regression model is not widely used.
+
+The above latent variable interpretation of the GLMs on binary data is naturally connected to the generating process of binary data \cite{young1980quantifying}. Binary data can be discrete in nature, for example when females and males are classified as ``1'' and ``0''. Another possibility is that there is a continuous process underlying the binary observation. For example in a toxicology study, the binary outcome of a subject being dead or alive relates to the dosage of a toxin used and the subject's tolerance level. The tolerance varies for different subjects, and the status (dead or alive) of a specific subject depends on whether its tolerance is higher than the used dosage or not. Thus, a continuous tolerance level is underlying the binary outcome \cite{agresti2013categorical}. \textcolor{blue}{Age: the above interpretation is complicated. Reply: yes. However, I could not find a easier example now.} If we assume our binary data set is generated from a continuous process, it is natural to use the latent variable interpretation of the probit link; or if it is assumed from a discrete process, we can use the logit link, and interpret it from the probabilistic perspective rather than the latent variable perspective. However, usually, the difference between the results derived from the GLMs using logit or probit link is negligible \cite{agresti2013categorical}.
+
+\subsection{Latent variable interpretation of the logistic PCA model}
+The measurement of $J$ binary variables on $I$ samples results in a binary matrix $\mathbf{X}$($I\times J$), whose $ij^{\text{th}}$ element $x_{ij}$ equals ``1'' or ``0''. The logistic PCA model on $\mathbf{X}$ can be interpreted as follows. Conditional on the low rank structure assumption, which is used to capture the correlations observed in $\mathbf{X}$, elements in $\mathbf{X}$ are independent realizations of the Bernoulli distributions, whose parameters are the corresponding elements of a probability matrix $\mathbf{\Pi}$($I \times J$), $\text{E}(\mathbf{X}|\mathbf{\Pi}) = \mathbf{\Pi}$. Assuming the natural parameter matrix, which is the logit transform of the probability matrix $\mathbf{\Pi}$, is $\mathbf{\Theta}$($I \times J$), we have $h(\mathbf{\Pi}) = \mathbf{\Theta}$ and $\mathbf{\Pi} = \phi(\mathbf{\Theta})$, in which $h()$ and $\phi()$ are the element-wise logit and inverse logit functions. The low rank structure is imposed on $\mathbf{\Theta}$ in the same way as in a classical PCA model, $\mathbf{\Theta} = \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{A}\mathbf{B}^{\text{T}}$, in which $\bm{\mu}$($J\times 1$) is the $J$ dimensional column offset term and can be interpreted as the logit transform of the marginal probabilities of the binary variables. $\mathbf{A}$ ($I \times R$) and $\mathbf{B}$($J \times R$) are the corresponding low rank score and loading matrices, and $R$, $R \ll \text{min}(I,J)$, is the low rank. Therefore, for the logistic PCA model, we have $\text{E}(\mathbf{X}|\mathbf{\Theta}) = \phi(\mathbf{\Theta}) = \phi(\mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{A}\mathbf{B}^{\text{T}})$. On the other hand, in a classical PCA model, we have $\text{E}(\mathbf{X}|\mathbf{\Theta}) = \mathbf{\Theta} = \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{A}\mathbf{B}^{\text{T}}$, which is equivalent to using the identity link function. Furthermore, unlike in the classical PCA model, the column offset $\bm{\mu}$ has to be included into the logistic PCA model to do the model based column centering. The reason is that the commonly used column centering processing step is not allowed to be applied on the binary data set as the column centered binary data is not binary anymore.
+
+The logistic PCA model can be re-expressed in the same way as the latent variable interpretation of the GLMs on binary data. Our binary observation $\mathbf{X}$ is assumed to be the sign observation of an underlying quantitative data set $\mathbf{X}^{\ast}$($I\times J$), and for the $ij^{\text{th}}$ element, we have $x_{ij} = 1$ if  $x^{\ast}_{ij} \geq 0$ and $x_{ij} = 0$ \textit{vice versa}. The low rank structure is imposed on the latent data set $\mathbf{X}^{\ast}$ as $\mathbf{X}^{\ast} = \mathbf{\Theta} + \mathbf{E}$, in which $\mathbf{E}$($I\times J$) is the error term, and its elements follow a standard logistic distribution. The latent variable interpretation of the logistic PCA model can be expressed as,
+\begin{equation*}
+\begin{split}
+                  \mathbf{X}^{\ast} &= \mathbf{\Theta} + \mathbf{E} \\
+                  \epsilon_{ij} & \sim \text{Logistic}(0,1), i = 1 \cdots I, j = 1 \cdots J \\
+                  x_{ij} & = \mathbb{1}{(x^{\ast}_{ij}>0)}, i = 1 \cdots I, j = 1 \cdots J.
+\end{split}
+\end{equation*}
+
+Similar to the latent variable interpretation of the logistic linear model, the assumption of $\epsilon_{ij} \sim \text{Logistic}(0,1)$ is not restrictive, since scaling the estimated $\hat{\mathbf{\Theta}}$ by a positive constant $\sigma$ will not change the conclusions from the model. When the standard normal distributed error is used in the above derivation, we get the probit PCA model. The latent variable interpretation of the logistic or probit PCA not only facilitates our understanding of the low rank structure underlying a multivariate binary data, but also provides a way to define the SNR in multivariate binary data simulation.
+
+\section{Logistic PCA via singular value thresholding}
+\subsection{The standard logistic PCA model}
+Assume the column centered $\mathbf{\Theta}$ is $\mathbf{Z}$, $\mathbf{Z} = \mathbf{\Theta} - \mathbf{1}\bm{\mu}^{\text{T}} = \mathbf{AB}^{\text{T}}$. In the standard logistic PCA model, the exact low rank constraint is imposed on $\mathbf{Z}$ as the multiplication of two rank $R$ matrices $\mathbf{A}$ and $\mathbf{B}$. The negative log likelihood of fitting the observed $\mathbf{X}$ conditional on the low rank structure assumption on $\mathbf{\Theta}$ is used as the loss function. We also introduce a weight matrix $\mathbf{W}$($I \times J$) to tackle the potential missing values in $\mathbf{X}$. The $ij^{\text{th}}$ element of $\mathbf{W}$, $w_{ij}$, equals 0 when the corresponding element in $\mathbf{X}$ is missing; while it is 1 \textit{vice versa}. The optimization problem of the standard logistic PCA model can be expressed as,
+\begin{equation}\label{chapter3_eq:1}
+\begin{aligned}
+\min_{\bm{\mu}, \mathbf{Z}} \quad & -\log(p(\mathbf{X}|\mathbf{\Theta},\mathbf{W}))\\
+               &= -\log(\prod_{i}^{I}\prod_{j}^{J} (p(x_{ij}|\theta_{ij}))^{w_{ij}})\\
+               &= -\sum_{i}^{I}\sum_{j}^{J} w_{ij} \left[x_{ij}\log(\phi(\theta_{ij})) + (1-x_{ij})\log(1-\phi(\theta_{ij}))\right] \\
+           \text{subject to} \quad   \mathbf{\Theta} &= \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{Z}\\
+                               \text{rank}(\mathbf{Z}) &= R \\
+                               \mathbf{1}^{\text{T}}\mathbf{Z} &= \mathbf{0},
+\end{aligned}
+\end{equation}
+in which the constraint $\mathbf{1}^{\text{T}}\mathbf{Z} = \mathbf{0}$ is imposed to make $\bm{\mu}$ identifiable. Unfortunately, the classical logistic PCA model tends to overfit the observed binary data. In order to decrease the loss function in equation \ref{chapter3_eq:1}, $\theta_{ij}$ tends to approach positive infinity when $x_{ij}=1$, and negative infinity when $x_{ij} = 0$. This overfitting problem will be explored in more detail below. In logistic linear regression, this overfitting problem can be solved by adding a quadratic penalty on the coefficient vector to regularize the estimated parameters. A similar idea can be applied to the logistic PCA model by taking it as a regression type problem. The columns of the score matrix $\mathbf{A}$ are taken as the unobserved explanatory variables, while the loading matrix $\mathbf{B}$ are the coefficients. If we decompose $\mathbf{Z}$ into a $R$ truncated SVD as $\mathbf{Z}=\mathbf{UDV}^{\text{T}}$, then $\mathbf{A}=\mathbf{U}$ and $\mathbf{B}=\mathbf{VD}^{\text{T}}$. It is easy to show that the quadratic penalty $||\mathbf{B}||_F^2 = \sum_{r} \sigma_{r}^2$, in which $\sigma_{r}$ is the $r^{\text{th}}$ singular value of $\mathbf{Z}$. Therefore, it is possible to derive a robust logistic PCA model by thresholding the singular values of $\mathbf{Z}$.
+
+\subsection{Logistic PCA via non-convex singular value thresholding}
+The most commonly used penalty function in thresholding singular values is the nuclear norm penalty, and it has been used in solving many low rank approximation problems \cite{candes2009exact,mazumder2010spectral,davenport20141,groenen2016multinomial}. If the SVD decomposition of matrix $\mathbf{Z}$ is $\mathbf{Z}=\mathbf{UDV}^{\text{T}}$, the nuclear norm penalty can be expressed as $\sum_{r} \sigma_r$, in which $\sigma_r$ is the $r^{\text{th}}$ singular value. The nuclear norm penalty is the convex relaxation of the exact low rank constraint and can be regarded as applying a lasso penalty on the singular values of a matrix. Therefore, the nuclear norm penalty has the same problem as the lasso penalty, it shrinks all singular values to the same degree. This leads to a biased estimation of the large singular values. This behavior will further make the prediction error or CV error based model selection procedure inconsistent \cite{meinshausen2010stability}. As an alternative, non-convex penalties can shrink the parameters in a nonlinear manner to achieve both nearly unbiased and sparse parameter estimation \cite{fan2001variable,armagan2013generalized}. Therefore, we propose to replace the exact low rank constraint in the logistic PCA model by a concave penalty on the singular values of $\mathbf{Z}$ to achieve a low rank estimation and to alleviate the overfitting issue. We include the frequentist version of the generalized double Pareto (GDP) \cite{armagan2013generalized} shrinkage, the smoothly clipped absolute deviation (SCAD) penalty \cite{fan2001variable} and the $L_{q:0<q \leq 1}$ penalty \cite{fu1998penalized} as examples of concave penalties in our implementation. The concave penalty on the singular values of $\mathbf{Z}$ can be expressed as $g(\mathbf{Z}) = \sum_{r} g(\sigma_r)$, in which $g()$ is a concave function in Table \ref{chapter3_tab:1}, $\sigma_{r}$ is the $r^{\text{th}}$ singular value of $\mathbf{Z}$. The thresholding properties of the exact low rank constraint, the nuclear norm penalty, and various concave penalties with different values of hyper-parameter are shown in Fig.~\ref{chapter3_fig:1}. Since the nuclear norm penalty is a linear function of the singular values, it is both convex and concave with respect to the singular values. Also, it is a special case of the $L_q$ penalty when setting $q=1$. Thus, the algorithm developed in this chapter also applies to the model with a nuclear norm penalty. The penalized negative log likelihood for fitting the observed binary data $\mathbf{X}$ of the logistic PCA with a concave penalty can be shown as,
+\begin{equation}\label{chapter3_eq:2}
+\begin{aligned}
+\min_{\bm{\mu}, \mathbf{Z}} \quad & -\log(p(\mathbf{X}|\mathbf{\Theta},\mathbf{W})) + \lambda g(\mathbf{Z}) \\
+           \text{subject to} \quad   \mathbf{\Theta} &= \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{Z}\\
+                               \mathbf{1}^{\text{T}}\mathbf{Z} &= \mathbf{0},
+\end{aligned}
+\end{equation}
+in which $\log(p(\mathbf{X}|\mathbf{\Theta},\mathbf{W}))$ and $g(\mathbf{Z})$ are as described above, and $\lambda$ is the tuning parameter.
+
+\begin{table}[htbp]
+\centering
+\caption{Some commonly used concave penalty functions and their supergradients. $\sigma$ is taken as the singular value and $q$, $\lambda$ and $\gamma$ are tuning parameters. The supergradient is the counter-concept of the subgradient of a convex function in concave analysis, and it is mainly used in the developed algorithms.}
+\label{chapter3_tab:1}
+\begin{tabular}{lll}
+  \toprule
+Penalty & Formula & Supergradient \\
+  \midrule
+ Nuclear norm & $ \lambda \sigma $ & $\lambda$ \\
+
+$L_{q}$ & $ \lambda \sigma^q $ & $\left\{ \begin{array}{ll} +\infty &\textrm{$\sigma=0$}\\
+                                 \lambda q \sigma^{q-1} &\textrm{$\sigma>0$}\\ \end{array} \right.$ \\
+
+SCAD & $\left\{ \begin{array}{ll} \lambda \sigma &\textrm{$\sigma \leq \lambda$}\\
+ \frac{-\sigma^2+2\gamma \lambda \sigma - \lambda^2}{2(\gamma-1)} &\textrm{$\lambda < \sigma \leq \gamma \lambda$}\\
+ \frac{\lambda^2(\gamma+1)}{2} &\textrm{$\sigma > \gamma \lambda$}\\ \end{array} \right.$ &
+                          $\left\{ \begin{array}{ll} \lambda &\textrm{$\sigma \leq \lambda$}\\
+ \frac{\gamma \lambda - \sigma}{\gamma-1} &\textrm{$\lambda < \sigma \leq \gamma \lambda$}\\
+ 0 &\textrm{$\sigma > \gamma \lambda$}\\ \end{array} \right.$ \\
+
+GDP & $ \lambda \log(1+\frac{\sigma}{\gamma}) $ & $\frac{\lambda}{\gamma + \sigma}$ \\
+  \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Chapter3_Fig_1.pdf}
+    \caption{Thresholding properties of the exact low rank constraint, $L_{q}$, SCAD and GDP penalties when the same degree of shrinkage is achieved. exact: exact low rank constraint, $L_{1}$: nuclear norm penalty. $\sigma$ indicates the original singular value while $\eta$ is the value after thresholding. Note that in contrast to SCAD and GDP, the $L_{q: 0 < q < 1}$ penalty has a small discontinuity region, thus continuous thresholding can not be achieved.}
+    \label{chapter3_fig:1}
+\end{figure}
+
+\section{Algorithm}
+Based on the MM principle \cite{de1994block,hunter2004tutorial}, a MM algorithm is derived to fit the logistic PCA model via non-convex singular value thresholding. The derived algorithm is guaranteed to decrease the objective function in equation \ref{chapter3_eq:2} during each iteration and the analytical form for updates of all the parameters in each iteration and are presented below. Although the following derivation focuses on using the logit link function, the option for probit link is included in our implementation.
+
+\subsection{The majorization of the negative log-likelihood}
+The negative log-likelihood $f(\mathbf{\Theta}) = -\log(p(\mathbf{X}|\mathbf{\Theta},\mathbf{W}))$ can be majorized to a quadratic function of $\mathbf{\Theta}$ by exploiting the upper-bound of the second order gradient of $f(\mathbf{\Theta})$. Suppose $f_{ij}(\theta_{ij}) = -\left[x_{ij}\log(\phi(\theta_{ij})) + (1-x_{ij})\log(1-\phi(\theta_{ij}))\right]$, in which $x_{ij}$ and $\theta_{ij}$ are the $ij^{\text{th}}$ elements of $\mathbf{X}$ and $\mathbf{\Theta}$, $f(\mathbf{\Theta})$ can be expressed as $f(\mathbf{\Theta}) = \sum_{i}^{I}\sum_{j}^{J} w_{ij} f_{ij}(\theta_{ij})$. When the logit link is used, the following results can be easily derived out, $\nabla f_{ij}(\theta_{ij}) = \phi(\theta_{ij}) - x_{ij}$, $\nabla^2 f_{ij}(\theta_{ij}) = \phi(\theta_{ij})(1-\phi(\theta_{ij}))$. Assume that $\nabla^2 f_{ij}(\theta_{ij})$ is upper bounded by a constant $L$. Since $\nabla^2 f_{ij}(\theta_{ij}) \leq 0.25$ when the logit link is used \cite{de2006principal} we can set $L=0.25$. Take $f(\theta)$ as the general representation of $f_{ij}(\theta_{ij})$, according to the Taylor's theorem and the assumption that $\nabla^2 f(\theta) \leq L$ for $\theta \in \text{domain}f$, we have the following inequality,
+\begin{equation}\label{chapter3_eq:3}
+\begin{aligned}
+f(\theta) &= f(\theta^k) + <\nabla f(\theta^k), \theta-\theta^k> + \frac{1}{2}(\theta-\theta^k)^{\text{T}} \nabla^{2}f(\theta^k + t(\theta-\theta^k))(\theta-\theta^k) \\
+          &\leq f(\theta^k) + <\nabla f(\theta^k), \theta-\theta^k> + \frac{L}{2}(\theta-\theta^k)^2 \\
+          &= \frac{L}{2}(\theta-\theta^k + \frac{1}{L}\nabla f(\theta^k))^2 + c,\\
+\end{aligned}
+\end{equation}
+where $\theta^k$ is the $k^{\text{th}}$ approximation of $\theta$, $t\in[0,1]$ is an unknown constant, $c$ is an unknown constant doesn't depend on $\mathbf{\Theta}$. Therefore, we have the following inequality about $f_{ij}(\theta_{ij})$,
+$f_{ij}(\theta_{ij}) \leq \frac{L}{2}(\theta_{ij} - \theta_{ij}^k + \frac{1}{L}\nabla f_{ij}(\theta_{ij}^k ))^2 + c$. Assume $\nabla f(\mathbf{\Theta}^k)$ is the matrix forms of $\nabla f_{ij}(\theta_{ij}^k )$, $\nabla f(\mathbf{\Theta}^k)) = \phi(\mathbf{\Theta}^{k}) - \mathbf{X}$. The inequality of $f(\mathbf{\Theta})$ can be derived out as $f(\mathbf{\Theta})\leq \frac{L}{2} \sum_{i}^{I}\sum_{j}^{J} w_{ij}[(\theta_{ij} - \theta_{ij}^k + \frac{1}{L}\nabla f_{ij}(\theta_{ij}^k ))^2] + c = \frac{L}{2} ||\mathbf{W} \odot (\mathbf{\Theta} - \mathbf{\Theta}^k + \frac{1}{L} \nabla f(\mathbf{\Theta}^k))||_F^2 + c$, in which $\odot$ indicates element-wise matrix multiplication. Following \cite{kiers1997weighted}, we further majorize the weighted least-squares upper bound into a quadratic function of $\mathbf{\Theta}$ as
+\begin{equation}\label{chapter3_eq:4}
+\begin{aligned}
+              &\frac{L}{2} ||\mathbf{W} \odot(\mathbf{\Theta} - \mathbf{\Theta}^k + \frac{1}{L} \nabla f(\mathbf{\Theta}^k))||_F^2 \\
+             &\leq  \frac{L}{2} ||\mathbf{\Theta}-\mathbf{H}^k||_F^2 + c \\
+              \mathbf{H}^k &= \mathbf{\Theta}^k - \frac{1}{L} (\mathbf{W}\odot \nabla f(\mathbf{\Theta}^k)).
+\end{aligned}
+\end{equation}
+
+\subsection{The majorization of the non-convex penalty}
+Suppose $\sigma_r$ is the $r^{\text{th}}$ singular value of $\mathbf{Z}$, and $g()$ is a concave function. From the definition of concavity \cite{boyd2004convex}, we have $g(\sigma_r) \leq g(\sigma_r^k) + \omega_r^k(\sigma_r - \sigma_r^k) = \omega_r^k \sigma_r + c$, in which $\sigma_r^k$ is the $r^{\text{th}}$ singular value of the $k^{\text{th}}$ approximation $\mathbf{Z}^k$ and $c$ is an unknown constant. Also, $\omega_r^k \in \partial g(\sigma_r^k)$ and $\partial g(\sigma_r^k)$ is the set of supergradients of function $g()$ at $\sigma_r^k$. For all the concave penalties used in Table \ref{chapter3_tab:1}, their supergradient is unique, thus $\omega_r^k = \partial g(\sigma_r^k)$. Therefore, $g(\mathbf{Z})= \sum_{r}g(\sigma_r(\mathbf{Z}))$ can be majorized as follows
+\begin{equation}\label{chapter3_eq:5}
+\begin{aligned}
+g(\mathbf{Z}) &= \sum_{r}g(\sigma_r)\\
+              &\leq \sum_{r}\omega_{r}^k \sigma_r + c\\
+       \omega_r^k &= \partial g(\sigma_r^k).
+\end{aligned}
+\end{equation}
+
+\textcolor{red}{Johan: Sometimes you use a summation from i = 1:I and sometimes you only state the summation of r (and not from r to R). Is there a difference? Reply: the difference is that, the number of samples I is known, while the number of non-zero singular values R is unknown.}
+
+\subsection{Block coordinate descent}
+Summarizing the above two majorization steps, we have the following majorized problem during the $k^{\text{th}}$ iteration.
+\begin{equation}\label{chapter3_eq:6}
+\begin{aligned}
+\min_{\bm{\mu},\mathbf{Z}} \quad & \frac{L}{2}||\mathbf{\Theta}-\mathbf{H}^{k}||_F^2 + \lambda \sum_{r} \omega_r^k\sigma_{r}\\
+           \text{subject to} \quad   \mathbf{\Theta} &= \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{Z}\\
+                               \mathbf{1}^{\text{T}}\mathbf{Z} &= \mathbf{0} \\
+                                \mathbf{H}^k &= \mathbf{\Theta}^k - \frac{1}{L} (\mathbf{W}\odot \nabla f(\mathbf{\Theta}^k)) \\
+                               \omega_r^k &= \partial g(\sigma_r^k).
+\end{aligned}
+\end{equation}
+This majorized problem during the $k^{\text{th}}$ iteration can be solved by the block coordinate descent algorithm.
+
+\subsubsection*{Updating $\bm{\mu}$}
+When fixing $\mathbf{Z}$ in equation \ref{chapter3_eq:6}, the analytical form solution of $\bm{\mu}$ is the column mean of $\mathbf{H}^k$, $\bm{\mu} = \frac{1}{I} (\mathbf{H}^k)^{\text{T}} \mathbf{1}$.
+
+\subsubsection*{Updating $\mathbf{Z}$}
+After deflating the offset set term $\bm{\mu}$ in equation \ref{chapter3_eq:6}, the optimization problem of $\mathbf{Z}$ becomes $\min_{\mathbf{Z}} \frac{L}{2}||\mathbf{Z}-\mathbf{J}\mathbf{H}^k||_F^2 + \lambda \sum_{r} \omega_r^k\sigma_{r}$, in which $\mathbf{J}$ is the column centering operator $\mathbf{J} = \mathbf{I} - \frac{1}{I}\mathbf{11}^{\text{T}}$. This optimization problem is equivalent to finding the proximal operator of the weighted sum of singular values, for which the analytical form global solution exists \cite{lu2015generalized}. If the SVD decomposition of $\mathbf{J}\mathbf{H}^k$ is $\mathbf{J}\mathbf{H}^k = \mathbf{UDV}^{\text{T}}$, the analytical form solution of $\mathbf{Z}$ is $\mathbf{Z} = \mathbf{U}\mathbf{D}_{z} \mathbf{V}^{\text{T}}$, in which $\mathbf{D}_{z} = \text{Diag}\{\text{max}(0, d_{r}-\frac{\lambda \omega_r^k}{L}) \}$, and $d_{r}$ is $r^{\text{th}}$ element of the diagonal of $\mathbf{D}$.
+
+\subsubsection*{Initialization}
+The initialization $\mathbf{Z}^0$ and $\mu^0$ can be set according to the user imputed values, or by using the following random initialization strategy. All the elements in $\mathbf{Z}^0$ can be sampled from the standard uniform distribution and $\mu^0$ can be set to $\mathbf{0}$. In the following algorithm, $f^k$ indicates the objective value in equation \ref{chapter3_eq:2} during the $k^{\text{th}}$ iteration, the relative change of the objective value is used as the stopping criteria. $\epsilon_f$ indicates the tolerance for the relative change of the objective value. Pseudocode of the algorithm described above is shown in Algorithm \ref{alg:logisticPCA}.
+
+\begin{algorithm}[htb]
+  \caption{An MM algorithm to fit the logistic PCA model via non-convex singular value thresholding.}
+  \label{alg:logisticPCA}
+  \begin{algorithmic}[1]
+    \Require
+      $\mathbf{X}$, $\lambda$, $\gamma$;
+    \Ensure
+      $\bm{\mu}$, $\mathbf{A}$, $\mathbf{B}$;
+    \State $k = 0$;
+    \State Compute $\mathbf{W}$ for missing values;
+    \State Initialize $\mu^0$, $\mathbf{Z}^0$;
+
+    \While{$(f^{k-1}-f^{k})/f^{k-1}>\epsilon_f$}
+        \State $\mathbf{\Theta}^k = \mathbf{1}(\bm{\mu}^k)^{\text{T}} + \mathbf{Z}^k$;
+        \State $\nabla f(\mathbf{\Theta}^{k})= \phi(\mathbf{\Theta}^k)-\mathbf{X}$;
+        \State $\mathbf{H}^k = \mathbf{\Theta}^k - \frac{1}{L} (\mathbf{W}\odot \nabla f(\mathbf{\Theta}^k))$;
+        \State $\omega_r^k = \partial g(\sigma_r^k)$;
+        \State $\bm{\mu}^{k+1} = \frac{1}{I}(\mathbf{H}^{k})^{\text{T}} \mathbf{1}$;
+        \State $\mathbf{JH}=\mathbf{J}\mathbf{H}^{k}$;
+        \State $\mathbf{UDV}^{\text{T}} = \mathbf{JH}$;
+        \State $\mathbf{D}_{z} = \text{Diag}\{\text{max}(0, d_{r}-\frac{\lambda \omega_r^k}{L}) \}$;
+        \State $\mathbf{Z}^{k+1} = \mathbf{U}\mathbf{D}_{z}\mathbf{V}^{\text{T}}$;
+        \State $\mathbf{\Theta}^{k+1} = \bm{\mu}^{k+1} + \mathbf{Z}^{k+1}$;
+        \State $k=k+1$;
+    \EndWhile
+    \State $\mathbf{A} = \mathbf{U}$;
+    \State $\mathbf{B} = \mathbf{V}\mathbf{D}_{z}$;
+  \end{algorithmic}
+\end{algorithm}
+
+\section{Real data set and simulation process}
+\subsection{Real data set}
+The CNA data sets in Chapter \ref{chapter:1} is used as an example of real data sets to show the results. The characterization of the CNA data set is shown in supplemental Fig.~S1 b.
+
+\subsection{Simulation process}
+Multivariate binary data $\mathbf{X}$ is simulated according to the logistic PCA model in a similar way as Chapter \ref{chapter:2} except that SNR is defined and there are no group structures in the sample space. \textcolor{blue}{Age: SNR is also defined in Chapter 2? And why there are no group structures? Reply: SNR of binary data simulation is only defined from this Chapter. The reason is that its definition replies on the latent variable interpretation, which is introduced in this Chapter. In this Chapter and following Chapters, we focus on recovering the underlying structure (simulated parameters), the group structures on the sample space are not important for us.} Based on the latent variable interpretation of the logistic PCA model, we can define the SNR as $\text{SNR}=\frac{||\mathbf{Z}||_F^2}{||\mathbf{E}||_F^2}$, in which $\mathbf{E}$ is the error term, and its elements are sampled from the standard logistic distribution. The column offset term $\bm{\mu}$ can be set in the same way as in Chapter \ref{chapter:1}. However the rank $R$ matrix $\mathbf{Z}=\mathbf{AB}^{\text{T}}$ is simulated in a slightly different way. We first express $\mathbf{Z}$ in a SVD type as $\mathbf{Z}= \mathbf{UDV}^{\text{T}}$, in which $\mathbf{U}^{\text{T}}\mathbf{U} = \mathbf{I}_{R}$, $\mathbf{V}^{\text{T}}\mathbf{V} = \mathbf{I}_{R}$ and the diagonal of $\mathbf{D}$ contains the singular values. Elements in $\mathbf{U}$ and $\mathbf{V}$ are first sampled from $N(0,1)$. After that, the column mean of $\mathbf{U}$ is deflated to have $\mathbf{1}^{\text{T}}\mathbf{U}=\mathbf{0}$, and the SVD is used to force $\mathbf{U}$ being orthogonal. Also, $\mathbf{V}$ is forced to orthogonality by the Gram-Schmidt algorithm. Then, the diagonal matrix $\mathbf{D}_{pre}$, whose $R$ diagonal elements are the sorted absolute values of the samples from $N(1,0.5)$, is simulated. We express $\mathbf{D}$ as $\mathbf{D} = c\mathbf{D}_{pre}$, in which $c$ is a constant used to adjust the SNR in the simulation of the multivariate binary data. Then $\mathbf{\Theta} = \mathbf{1}\bm{\mu}^{\text{T}} + \mathbf{Z}$ according to the logistic PCA model and $\mathbf{X}^{\ast} = \mathbf{\Theta} + \mathbf{E}$ according to the latent variable interpretation. The probability matrix $\mathbf{\Pi}$ is generated as $\mathbf{\Pi} = \phi(\mathbf{\Theta})$, in which $\phi()$ by the inverse logit link function. Finally, the multivariate binary data set $\mathbf{X}$ is generated from Bernoulli distributions with the corresponding parameters in $\mathbf{\Pi}$.
+
+\section{Model assessment and model selection}
+In this chapter we focus on evaluating the model's performance in estimating the simulated parameters $\mathbf{\Theta}$, $\mathbf{\Pi}$, $\bm{\mu}$ and $\mathbf{Z}$. Also, the CV error is defined based on the log likelihood of fitting binary data rather than misclassifying the binary data. \textcolor{blue}{Age: why compute CV based on the likelihood rather than the misclassification rates. Reply: In the Chapter2, the multiple PCA extensions have different theories, in order to compare their performance on binary data, we have to find a common ground for them, which is the observed binary data set. In this Chapter, we don't need to do it anymore. Another reason is that log-likelihood has high resolution than misclassification rate.}
+
+\subsection{Model assessment}
+After a logistic PCA model is constructed on the simulated binary data, we have the estimated parameters $\hat{\bm{\mu}}$, $\hat{\mathbf{A}}$ and $\hat{\mathbf{B}}$, and $\hat{\mathbf{\Theta}} = \mathbf{1}\hat{\bm{\mu}}^{\text{T}} + \hat{\mathbf{AB}^{\text{T}}}$ and $\hat{\mathbf{\Pi}} = \phi(\hat{\mathbf{\Theta}})$ can also be computed.
+The model's ability in recovering the true $\mathbf{\Theta}$ can be evaluated by the relative mean squares error (RMSE), which is defined as $\text{RMSE}(\mathbf{\Theta}) = \frac{||\mathbf{\Theta}-\hat{\mathbf{\Theta}}||_F^2}{||\mathbf{\Theta}||_F^2}$, where $\mathbf{\Theta}$ is the true parameter. The RMSEs in estimating $\bm{\mu}$ and $\mathbf{Z}$ are defined in the same way. In some cases the mean Hellinger distance (MHD) to quantify the similarity between the true probability matrix $\mathbf{\Pi}$ and the estimated $\hat{\mathbf{\Pi}}$ is used. Hellinger distance \cite{le2012asymptotics} is a symmetric measure to quantify the similarity between two probability distributions. Assuming the parameter of a Bernoulli distribution is $\pi$ and its estimation is $\hat{\pi}$, the Hellinger distance is defined as $\text{HD}(\pi,\hat{\pi}) = \frac{1}{\sqrt{2}}\sqrt{(\sqrt{\pi}-\sqrt{\hat{\pi}})^2 + (\sqrt{1-\pi}-\sqrt{1-\hat{\pi}})^2}$. The mean Hellinger distance between the probability matrix $\mathbf{\Pi}$ and its estimate $\hat{\mathbf{\Pi}}$ is defined as $\text{MHD}(\mathbf{\Pi}) =  \frac{1}{I\times J} \sum_{i,j}^{I,J}\text{HD}(\pi_{ij},\hat{\pi}_{ij})$.
+
+\subsection{Model selection}
+For the model selection on real data, a missing value based cross validation (CV) procedure is proposed. The CV error is computed as follows. First, elements in $\mathbf{X}$ are split into the training and test sets as follows: $10\%$ ``1''s and ``0''s of $\mathbf{X}$ are randomly selected as the test set $\mathbf{X}^{\text{test}}$, which are set to missing values, and the resulting data set is taken as $\mathbf{X}^{\text{train}}$. After getting an estimation of $\hat{\mathbf{\Theta}}$ from a logistic PCA on the $\mathbf{X}^{\text{train}}$, we can index the elements, which are corresponding to the test set $\mathbf{X}^{\text{test}}$, as $\hat{\mathbf{\Theta}}^{\text{test}}$. Then the CV error is defined as the negative log-likelihood of using $\hat{\mathbf{\Theta}}^{\text{test}}$ to fit $\mathbf{X}^{\text{test}}$.
+
+There are two tuning parameters, $\gamma$ and $\lambda$, during the model selection of the logistic PCA model with a concave penalty. However, the performance of the model is rather insensitive to the selection of $\gamma$ for some concave penalties, which will be shown below. After fixing the value of $\gamma$, we can use a grid search to select a proper value of $\lambda$ based on the minimum CV error. First, a sequence of $\lambda$ values can be selected from a proper searching range, after which logistic PCA models will be fitted with the selected $\lambda$ values on the training set $\mathbf{X}^{\text{train}}$. A warm start strategy, using the results of a previous model as the initialization of the next model, is used to accelerate the model selection process. The model with the minimum CV error is selected and then it is re-fitted on the full data set $\mathbf{X}$. Because the proposed model is non-convex and its result is sensitive to the used initialization, it is recommended to use the results derived from the selected model as the initialization of the model to fit the full data sets.
+
+\section{Results}
+\subsection{Standard logistic PCA model tends to overfit the data}
+In this first section we will use the CNA data as an example. The algorithm from \cite{de2006principal} is implemented to fit the standard logistic PCA model. Constraints, $\mathbf{A}^{\text{T}}\mathbf{A} = \mathbf{I}$ and $\mathbf{1}^{\text{T}}\mathbf{A}$, are imposed. Two different standard logistic PCA models  are constructed of the CNA data, both with three components. The first model is obtained with low precision (stopping criteria was set to $\epsilon_f=10^{-4}$) while for the other model a high precision was used ($\epsilon_f=10^{-8}$). The initialization was the same for these two models. The low precision model converged already after 220 iterations, while the high precision model did not convergence even after 50000 iterations. The difference between the final objective values of these two models is not large, $8.12e+03$ and $7.58e+03$ respectively. However, as shown in Fig.~\ref{chapter3_fig:2}, the scale of the loading plots derived from these two models is very different. When a high precision stopping criteria is used, some of the elements from the estimated loading matrix from the standard logistic PCA model tend to become very large.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth ]{Chapter3_Fig_2.pdf}
+    \caption{The loading plots of the first two components derived from the low precision (left) and high precision (right) standard logistic PCA models.}
+    \label{chapter3_fig:2}
+\end{figure}
+
+\subsection{Model selection of the logistic PCA model with a concave GDP penalty}
+Here we use logistic PCA model with a concave GDP penalty as an example to show the CV error based model selection procedure. The data set is simulated as follows. The offset term $\bm{\mu}$ is set to the logit transform of the empirical marginal probabilities of the CNA data to simulate an imbalanced binary data set. Other parameters used in the simulation are $I=160$, $J=410$, $\text{SNR}=1$ and $R=5$. First we will show the model selection procedure of $\lambda$ while the hyper-parameter $\gamma$ is fixed to $\gamma=1$. After splitting the simulated binary data set $\mathbf{X}$ into the training set $\mathbf{X}^{\text{train}}$ and the test set $\mathbf{X}^{\text{test}}$, 30 $\lambda$ values are selected from the searching range $[10,5000]$ with equal distance in log-space. For each $\lambda$ value, a logistic PCA with a GDP penalty ($\epsilon_f = 10^{-6}$, maximum iteration is 500) is constructed on $\mathbf{X}^{\text{train}}$ and for each model we evaluate its performance in estimating the simulated parameters. As shown in the model selection results (Fig.~\ref{chapter3_fig:3}), the selected model with minimum CV error can also achieve approximately optimal RMSEs in estimating the simulated $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ . However, the rank of the estimated $\mathbf{Z}$ from the selected model is 3, which is different from the simulated rank $R=5$. The reason will be discussed later. The selected model is re-fitted on the full simulated data $\mathbf{X}$, and the RMSEs of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ are 0.0797, 0.2064 and 0.0421 respectively.
+
+Next, we will show the model selection process of both $\gamma$ and $\lambda$. The simulated data $\mathbf{X}$ is split into the $\mathbf{X}^{\text{train}}$ and the $\mathbf{X}^{\text{test}}$ in the same way as described above. 30 $\gamma$ values are selected from the range $[10^{-1},10^{2}]$ equidistant in log-space. For each $\gamma$, 30 values of $\lambda$ are selected from a proper searching range, which is determined by an automatic procedure. For each value of $\gamma$, the model selection of $\lambda$ is done on the $\mathbf{X}^{\text{train}}$ in the same way as described above, after which the selected model is re-fitted on the full data $\mathbf{X}$. Therefore, for each value of $\gamma$, we have a selected model, which is optimal with respect to the CV error. As shown in Fig.~\ref{chapter3_fig:4}(left), the difference between the RMSEs derived from these selected models is very small. This can be caused by two reasons: the model is insensitive to the selection of $\gamma$ or the CV error based model selection procedure is not successful in selecting $\gamma$. To clarify the correct reason, we also fit $30 \times 30$ models on the full data $\mathbf{X}$ in the same way as the above experiment. For each value of $\gamma$, the model with minimum $\text{RMSE}(\mathbf{\Theta})$ is selected. As shown in Fig.~\ref{chapter3_fig:4}(right), the value of $\gamma$ does not have a large effect on the RMSEs of the selected models, which are optimal with respect to the $\text{RMSE}(\mathbf{\Theta})$. Therefore, it can be concluded that the performance of the model is insensitive to the model selection of $\gamma$. Therefore, the strategy can be to set a default value for $\gamma$ and focus on the selection of $\lambda$.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth ]{Chapter3_Fig_3.pdf}
+    \caption{Model selection and performance of the logistic PCA model with a GDP penalty. The CV error, RMSE of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ and the estimated rank as a function of $\lambda$. The increased CV error and RMSEs for small $\lambda$ are the result of non-converged models after 500 iterations. The red cross marker indicates the $\lambda$ value where minimum CV error is achieved.}
+	\label{chapter3_fig:3}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth ]{Chapter3_Fig_4.pdf}
+    \caption{The RMSE of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ as a function of hyper-parameter $\gamma$ of GDP penalty. Results on the left side are obtained when the optimal model is selected based on minimum CV error while on the right hand side model selection was based on minimum  $\text{RMSE}(\mathbf{\Theta})$.}
+    \label{chapter3_fig:4}
+\end{figure}
+
+\subsection{Model selection of the logistic PCA model with other concave penalties}
+For the logistic PCA models with $L_{q}$ and SCAD penalty, the model is selected and re-fitted on the full data sets in the same way as above. Fig.~\ref{chapter3_fig:5} shows how the value of hyper-parameter $q$ or $\gamma$ effects the RMSEs in estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ from the logistic PCA models, which are optimal with respect to CV error, with $L_{q}$ penalty (left) and SCAD penalty (right). The model with $L_{q}$ penalty can achieve similar performance as the model with GDP penalty when proper value of $q$ is selected, while the model with SCAD penalty tends to have very large RMSEs in estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ for all the values of hyper-parameter $\gamma$.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth ]{Chapter3_Fig_5.pdf}
+    \caption{The RMSE of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ as a function of hyper-parameter $q$ in $L_{q}$ penalty (left) and $\gamma$ in SCAD penalty (right). The corresponding logistic PCA models are optimal with respect to CV error.}
+    \label{chapter3_fig:5}
+\end{figure}
+
+\subsection{The performance of the logistic PCA model using different penalties}\label{chapter3_section_3_7}
+In this section, we compare the performance of the logistic PCA models with the exact low rank constraint, the nuclear norm penalty, SCAD ($\gamma=3.7$), $L_{q}$ ($q=0.5$) and the GDP ($\gamma=1$) penalty. Random initialization is used and the maximum number of iterations is set to 10000 for all the models. Furthermore, all models are fitted using both $\epsilon_f = 10^{-6}$ and $\epsilon_f = 10^{-8}$ to test the model's robustness to the stopping criteria. For the standard logistic PCA model using the exact low rank constraint, 5 components are used. For the models with GDP ($\gamma=1$), nuclear norm, SCAD ($\gamma=3.7$) and $L_{q}$ ($q=0.5$) penalties, the models are selected (the model selection results are shown in Fig.~\ref{chapter3_fig:3} and the supplemental Fig.~S3.1) and re-fitted on full data set in the same way as was described above. In addition, according to the latent variable interpretation of the logistic PCA model, the unobserved quantitative data set $\mathbf{X}^{\ast} = \mathbf{\Theta} + \mathbf{E}$ is available in our simulation. We constructed a 5 components PCA model (with offset term) on this latent data $\mathbf{X}^{\ast}$, and this model is called the full information model. The results of above experiment are shown in Table \ref{chapter3_tab:2}. Since the logistic PCA model with nuclear norm penalty is a convex problem, the global solution can be achieved. The results from this model are taken as the baseline to compare other approaches. The drawback of the model with the nuclear norm penalty is that the proposed CV error based model selection procedure tends to select a too complex model to compensate for the biased estimation caused by the nuclear norm penalty (supplemental Fig.~S3.2, Table \ref{chapter3_tab:2}). Compared to the model with nuclear norm penalty, the logistic PCA model with exact low rank constraint and SCAD penalty tends to overfit the data, thus have bad performance in estimating the simulated parameters $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$. Also these models are not robust to the stopping criteria. Compared to the model with nuclear norm penalty, the logistic PCA models with a GDP penalty or a $L_{q}$ penalty perform well in estimating the simulated parameters, and their results are even close to the full information model.
+\begin{table}[htbp]
+\centering
+\caption{Comparison of the logistic PCA models with the exact low rank constraint, the nuclear norm penalty, the SCAD penalty, the $L_{q}$ penalty, the GDP penalty, and the full information model. The RMSEs of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$, as well as the mean Hellinger distance (MHD) of estimating the simulated probability matrix $\mathbf{\Pi}$ and the rank estimation of $\hat{\mathbf{Z}}$ are shown in the table. \textcolor{red}{Johan: Lq seems even better than the GDP. Is there a reason for this?
+The the noncontinuous part does not seem to hurt. Reply: yes, the performance of Lq actually is quite good. The potential problem caused by noncontinuous is only conceptually. According to previous research, it rarely happens in practice.} }
+\label{chapter3_tab:2}
+\begin{tabular}{lllllll}
+  \toprule
+penalty & $\epsilon_f$ & $\text{RMSE}(\mathbf{\Theta})$ & $\text{RMSE}(\mathbf{Z})$ & $\text{RMSE}(\bm{\mu})$ & MHD & rank \\
+  \midrule
+  \multirow{2}{0.5em}{exact} & $10^{-6}$  &3.8017    &7.8491    &2.6023    &0.0726    &5      \\
+                             & $10^{-8}$  &8.4955    &17.0129   &5.9715    &0.0733    &5      \\
+  \hline
+  \multirow{2}{0.5em}{nuclear norm} & $10^{-6}$  &0.1407    &0.3788    &0.0701    &0.0670   &27      \\
+                                    & $10^{-8}$  &0.1405    &0.3783    &0.0700    &0.0670   &27     \\
+  \hline
+  \multirow{2}{0.5em}{GDP} & $10^{-6}$   &0.0797    &0.2064    &0.0421    &0.0515    &3    \\
+                           & $10^{-8}$   &0.0786    &0.2063    &0.0408    &0.0514    &3    \\
+  \hline
+  \multirow{2}{0.5em}{SCAD} & $10^{-6}$  &3.1495    &8.5635    &1.5452    &0.2026   &88      \\
+                            & $10^{-8}$  &5.6032    &14.1106    &3.0821    &0.2109   &88    \\
+  \hline
+  \multirow{2}{0.5em}{$L_{q}$} & $10^{-6}$   &0.0672    &0.1836    &0.0327    &0.0483  &4    \\
+                           & $10^{-8}$   &0.0671    &0.1834    &0.0327    &0.0484    &4    \\
+  \hline
+  full &   &0.0120    &0.0465    &0.0017    &0.0258    &5     \\
+
+  \bottomrule
+\end{tabular}
+\end{table}
+
+The difference in the performance of the logistic PCA models with different penalties (Table \ref{chapter3_tab:2}) are mainly related to how these penalties shrink the singular values. Therefore, we also compared the singular values of the simulated $\mathbf{Z}$ and their estimations from the logistic PCA models with different penalties, and its estimation from the full information model. The results are shown in Fig.~\ref{chapter3_fig:6}. The simulated low rank is 5, however the last component is overwhelmed by the noise. Furthermore, the $4^{\text{th}}$ component is less than 2 times noise level and therefore cannot be expected to be distinguished from the noise. From Fig.~\ref{chapter3_fig:6}(left) it becomes clear that the logistic PCA models with exact low rank constraint and SCAD penalty clearly overestimate the singular values of $\mathbf{Z}$. And when the more strict stopping criterion is used, the overestimation problem becomes even worse. Fig.~\ref{chapter3_fig:6}(right) shows that the logistic PCA model with nuclear norm penalty underestimated the singular values of $\mathbf{Z}$, and includes too many small singular values into the model. The logistic PCA model with GDP penalty and $L_{q}$ penalty have very accurate estimation of the first three and four singular values of $\mathbf{Z}$. These results are in line with their performance measures in Table \ref{chapter3_tab:2} and their thresholding properties in Fig.~\ref{chapter3_fig:1}. The bad performance of the model with exact low rank constraint is mainly because the non-zero singular values are not regularized at all (Fig.~\ref{chapter3_fig:1}). Similarly, some of the non-zero singular values (the values larger than $\gamma \lambda$) are also not regularized at all for the SCAD penalty (Fig.~\ref{chapter3_fig:1}). \textcolor{blue}{Age: why $\gamma \lambda$ is the threshold? Reply: for the SCAD penalty, when the singular value $\sigma > \gamma \lambda$, it will not be shrunk. Look at the formula and supergradient of the SCAD penalty in Table \ref{chapter3_tab:1} and the thresholding property in the center of Fig.~\ref{chapter3_fig:1}.} This property can be more problematic for the logistic PCA model with SCAD penalty because the selected model depends on the model with the smallest $\lambda$ value due to the used warm start strategy during the model selection process. The low performance of the model with nuclear norm penalty is because this penalty will over shrink the larger singular values, and the model selected based on CV error is too complex (Fig.~\ref{chapter3_fig:1}). On the contrary, both the models with $L_{q}$ and GDP penalties have nice thresholding properties and the corresponding logistic models have superior performance. However, unlike SCAD and GDP, the $L_{q}$($0<q<1$) penalty has a small discontinuity region, continuous thresholding can not be achieved, which could results in instable prediction \cite{fan2001variable}. \textcolor{red}{Johan: But this seems not a problem at all. Also at that region the singular values are estimated much too small for both Lq and GDP. I'm not sure you have to stress this discontinuity so much. Reply: I have to indicate whey we choose GDP rather than Lq. I think the main reason is that the discontinuity region is very small.} Therefore, even though the model with $L_{q}$ penalty achieves slight better performance, we still recommend to use the GDP penalty for the non-convex singular thresholding in the logistic PCA model. \textcolor{blue}{Age: a theoretical reason. Reply: In the literature, the main drawback of the $L_{q}$($0<q<1$) penalty is that it can not achieve continuous thresholding. Another drawback is it is non-convex problem. All our penalties are non-convex. I can only say the drawback is that continuous thresholding can not achieved.}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.9\textwidth]{Chapter3_Fig_6.pdf}
+    \caption{Left: the singular values of the simulated $\mathbf{Z}$ and $\mathbf{E}$, and the singular values of the estimated $\hat{\mathbf{Z}}$ from logistic PCA models ($\epsilon_f = 10^{-6}$ and $\epsilon_f = 10^{-8}$) with exact low rank constraint and SCAD penalty. Right: the singular values of the simulated $\mathbf{Z}$ and $\mathbf{E}$, and the singular values of the estimated $\hat{\mathbf{Z}}$ from the logistic PCA models ($\epsilon_f = 10^{-6}$) with a nuclear norm, GDP and $L_{q}$ penalty, and from the full information model. Only the first 10 components are shown to increase the resolution of the plot.}
+    \label{chapter3_fig:6}
+\end{figure}
+
+\subsection{Performance of the logistic PCA model as a function of SNR in the binary simulation.}
+In the analysis of simulated quantitative data sets using the PCA model, an increase in SNR makes the estimation of the true underlying low rank structure easier. Unfortunately, this is not true in the estimation of the true underlying logistic PCA model for simulated binary data. To illustrate this, the following experiment was performed using logistic PCA model with GDP penalty as an example. 30 SNR values are selected from the interval $[10^{-2}, 10^{3}]$ equidistant in log-space. The simulated offset term $\bm{\mu}$ is set to $\mathbf{0}$ to simulate balanced binary data sets, the number of samples, variables, and the low rank are the same as the experiment described above. For the binary data simulations with different SNRs, only the constant $c$, which is used to adjust the SNR, changes with the SNR. All other parameters are kept the same. For each simulated $\mathbf{X}$ with a specific SNR, logistic PCA models with GDP ($\gamma=1$) penalty and with nuclear norm penalty are selected and re-fitted. In addition, PCA models with different numbers of components are fitted on the latent quantitative data set $\mathbf{X}^{\ast}$, and the model with the minimum $\text{RMSE}(\mathbf{\Theta})$ is selected. In addition, the null model, i.e. the logistic PCA model with only the column offset term, is used to provide a baseline for comparison of the different approaches. The above experiments are repeated 10 times, and their results are shown in Fig.~\ref{chapter3_fig:7}. Results obtained from a similar experiment but performed on imbalanced data simulation are shown in supplemental Fig.~S3.2. There, the simulated $\bm{\mu}$ is set according to the marginal probabilities of the CNA data set. Overall, the logistic PCA models with different penalties can always achieve better performance than the null model, and the model with a GDP penalty demonstrates superior performance with respect to all the used metrics compared to the model with convex nuclear norm penalty.
+
+Fig.~\ref{chapter3_fig:7} (left and center) shows that with increasing SNR, the estimation of the quantitative full model improves as expected. However, for the parameters estimated from the binary data this is not the case. First the estimation of the simulated parameters $\mathbf{\Theta}$ and $\mathbf{Z}$ improves, but when the SNR increases even further, the estimation deteriorates again leading to a bowl shaped pattern. This pattern has been observed before in binary matrix completion using nuclear norm penalty \cite{davenport20141}. In order to understand this effect, considering the S-shaped logistic curve (supplemental Fig.~S3.3), the plot of the function $\text{E}(x|\theta) = \phi(\theta) = (1+\exp(-\theta))^{-1}$, in which $x$ and $\theta$ are a typical element of $\mathbf{X}$ and $\mathbf{\Theta}$ respectively. This curve almost becomes flat when $\theta$ becomes very large. There is no resolution anymore in these flat regimes. A large deviation in $\theta$ has almost no effect on the logistic response. When the SNR becomes extremely large, the scale of the simulated parameter $\theta$ is very extreme, then even if we have a good estimation of the probability $\hat{\pi} = \phi(\hat{\theta})$, the scale of estimated $\hat{\theta}$ can be far away from the simulated $\theta$. That is why we observed that even though the model is able to recovered the simulated $\mathbf{\Pi}$ based on the logistic PCA model almost exactly (Fig.~\ref{chapter3_fig:7} right), the estimation of $\mathbf{\Theta}$ and $\mathbf{Z}$ are not accurate (Fig.~\ref{chapter3_fig:7} left and center). We refer to \cite{davenport20141} for a detailed interpretation of this phenomenon.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.9\textwidth]{Chapter3_Fig_7.pdf}
+    \caption{RMSE of $\mathbf{Z}$ (left) and $\mathbf{\Theta}$ (middle) and the MHD of $\mathbf{\Pi}$ as a function of increasing SNR values for simulated balanced binary data.}
+    \label{chapter3_fig:7}
+\end{figure}
+
+\subsection{Real data analysis}
+We demonstrate the proposed logistic PCA model with a GDP ($\gamma=1$) penalty and the corresponding model selection procedure on the CNA data set. The model selection is done in the same way as was described above, and the result is shown in supplemental Fig.~S3.4. After that, the selected 4 components model is re-fitted on the full data set. The score and loading plot of the first 2 components are shown in Fig.~\ref{chapter3_fig:8}. As was explained before in \cite{song2018generalized}, the CNA data set is not discriminative for the three cancer types (illustrated in the score plot of Fig.~\ref{chapter3_fig:8} left). The structure in the loading plot (Fig.~\ref{chapter3_fig:8} right) mainly explains the technical characteristics of the data. Fig.~\ref{chapter3_fig:8} (right) shows that the gains and losses of the segments in the chromosomal regions corresponding to the CNA measurements are almost perfectly separated from each other in the first component. Therefore, the variation explained of the first component is mainly because of the difference of gains and losses in CNA measurements.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.9\textwidth]{Chapter3_Fig_8.pdf}
+    \caption{The score and loading plots of the first 2 components of the logistic PCA model on the CNA data. The legend, BRCA, LUAD and SKCM, indicates the corresponding three cancer types. The legend, gain, loss, indicates the gain or loss of a segment in the chromosome region corresponding to the CNA measurement.
+    }
+    \label{chapter3_fig:8}
+\end{figure}
+
+\section{Discussion}
+To study the properties of the logistic PCA model with different penalties, we need to have the ability to simulate the multivariate binary data set with an underlying low rank structure, and the simulated structure should have a proper SNR so that the model can find it back. The latent variable interpretation of the logistic PCA model not only makes the assumption of low rank structure easier to understand, but also provides us a way to define SNR in multivariate binary data simulation.
+
+The standard logistic PCA model using the exact low rank constraint has an overfitting problem. The overfitting issue manifests itself in a way that some of the elements in the estimated loading matrix $\hat{\mathbf{B}}$ (the orthogonality constraint is imposed on $\mathbf{A}$) have the tendency to approach infinity, and the non-zero singular values of the $\hat{\mathbf{Z}} = \hat{\mathbf{A}}\hat{\mathbf{B}}^{\text{T}}$ are not upper-bounded when strict stopping criteria are used. This overfitting issue can be alleviated by regularizing the singular values of $\mathbf{Z}$. Both convex nuclear norm penalties and some of the concave penalties can induce low rank estimation and simultaneously constrain the scale of the non-zero singular values. Therefore, logistic PCA models with these penalties do not suffer from the overfitting problem.
+
+However, the logistic PCA model with a GDP or a $L_{q}$ penalty has several advantages compared to the model with the nuclear norm penalty. Since the nuclear norm penalty applies the same degree of shrinkage on all the singular values, the large singular values are shrunken too much. Therefore, the implemented CV error based model selection procedure tends to select a very complex model with too many components to compensate for the biased estimations. On the contrary, both the GDP penalty and the $L_{q}$ penalty achieve nearly unbiased estimation. Thus the CV error based model selection is successful in selecting the logistic PCA model with the a GDP penalty. Furthermore, the selected logistic PCA model with a GDP or a $L_{q}$ penalty has shown superior performance in recovering the simulated low rank structure compared to the model with the nuclear norm penalty, and the exact low rank constraint.
+
+One exception of the used concave penalties is the SCAD penalty, which leads to a logistic PCA model with poor performance. As stated in the Section \ref{chapter3_section_3_7}, the poor performance of the model with the SCAD penalty is mainly because of that some of the large singular values are not regularized at all. And this drawback is exaggerated by the wart start strategy used during the model selection process. The poor performance of the models with the exact low rank constraint and the SCAD penalty reminds us the importance of regularizing all the singular values simultaneously in inducing the low rank structure for a logistic PCA model.
+
+\textcolor{red}{Johan: Why are the errors for SCAD so much larger than for the other penalties? This seems weird. Are you sure this is a correct implementation of the penalty? Reply: Yes, the errors of SCAD in this Chapter is quite different from the results of Chapter 4 (GSCA) model, which are not too bad. The implementation of the penalty is correct in both these two Chapters. The reason lies on how we do the model selection. In the model selection of Chapter 4, suppose we have 15 different values of $\lambda$, we will first fit the model with the largest $\lambda$, then the model with smaller $\lambda$. Since we used the 7-fold Wold partition strategy, we have 7 training sets and 7 test sets. For each value of $\lambda$, we need to fit 7 models, and we only use the warm-start strategy here to accelerate this process. Therefore, the models with a specific value of $\lambda$ are not effected by other models with different value of $\lambda$. This model selection procedure is very different from the one used in this Chapter. For the model selection of the logistic PCA model, we first fit the model with the smallest value of $\lambda$, and then the larger $\lambda$. Suppose we also have 15 values of $\lambda$. For each value of $\lambda$, we only have a training set and a test set. Therefore we only fit a single model for each value of $\lambda$. And the warm-start strategy is used to accelerate this process. Thus, a model with a specific value of $\lambda$ is effected by the previous model with a smaller value of $\lambda$. This phenomenon will have a catastrophic effect for the performance of SCAD model. For the first model (with the smallest $\lambda$ value) with a SCAD penalty, all the singular values are not constrained at all, therefore tends to be very large numbers. The results of the first model are used to initialize the second model, if the singular values of the first model are larger that $\gamma * \lambda$, they will not be shrunk even in the second model. In this way, all the following models are strong effected by the results of the first model. That is why the model with a SCAD penalty has very bad performance.}
+
+\section*{Acknowledgements}
+Y.S. gratefully acknowledges the financial support from China Scholarship Council (NO.201504910809).
+
+\clearpage
+\section{Supplementary information}
+% chapter 3
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth ]{Chapter3_Fig_S1.pdf}
+    \caption*{Figure S3.1: Model selection of the logistic PCA model with the nuclear norm penalty, the SCAD penalty and $L_{q}$ penalty. The CV error, RMSE of estimating $\mathbf{\Theta}$, $\mathbf{Z}$ and $\bm{\mu}$ and the estimated rank as a function of $\lambda$. The red cross marker indicates the $\lambda$ value where minimum CV error is achieved.}
+    \label{chapter3_fig:S1}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.9\textwidth]{Chapter3_Fig_S2.pdf}
+    \caption*{Figure S3.2: How the SNR in imbalanced binary data simulation affects the performance of the logistic PCA models with different penalties, and the full information model.}
+    \label{chapter3_fig:S2}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.5\textwidth]{Chapter3_Fig_S3.pdf}
+    \caption*{Figure S3.3: The relationship of $\text{E}(x|\theta) = \phi(\theta)$, in which $x$ and $\theta$ are a typical element of $\mathbf{X}$ and $\mathbf{\Theta}$ respectively.}
+    \label{chapter3_fig:S3}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width = 0.9\textwidth]{Chapter3_Fig_S4.pdf}
+    \caption*{Figure S3.4: How $\lambda$ effects the CV error (left) and the rank estimation (right) in the model selection process of the logistic PCA model with a GDP penalty on the CNA data set.}
+    \label{chapter3_fig:S4}
+\end{figure}
+
+
+
+
+
+
+
+

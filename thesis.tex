@@ -1,0 +1,72 @@
+%% The formate of the thesis is based on the
+%% illcdiss.cls (Version: July 18, 2001) written by Marco Vervoort
+\documentclass{illcdiss}
+%% manage the reference
+\makeindex %If you want to use MakeIndex, uncomment these lines
+\usepackage[utf8]{inputenc}
+
+\usepackage{hyperref}
+
+%% Sets page size and margins
+%\usepackage[a4paper,top=3cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+%% used packages
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bbold}
+\usepackage{authblk}
+\usepackage{bm}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{caption}  % for figure caption
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+%% self-defined new commonads
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}  % Use Input in the format of Algorithm
+\renewcommand{\algorithmicensure}{\textbf{Output:}} % Use Output in the format of Algorithm
+%\usepackage[colorinlistoftodos]{todonotes}
+%\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\providecommand{\keywords}[1]{\textbf{\textit{Keywords:}} #1}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\typeout{Fusing Heterogeneous data sets `thesis.tex' <March 3, 2019>.}
+
+\begin{document}
+\pagestyle{plain}
+\pagenumbering{roman}
+
+%% include the front pages, dedication and table of contents and acknowledgements
+\include{thesis_front}
+\include{thesis_dedication}
+\tableofcontents
+
+%%  now we can start with the real thing
+\cleardoublepage
+\pagestyle{headings}
+\pagenumbering{arabic}
+
+\include{thesis_ch1}
+\include{thesis_ch2}
+\include{thesis_ch3}
+\include{thesis_ch4}
+\include{thesis_ch5}
+\include{thesis_ch6}
+
+%%  \include the `end matter'
+
+\include{thesis_summary}
+\include{thesis_samenvatting}
+\include{thesis_acknowledgements}
+
+%\appendix
+%\include{thesis_suppl}
+
+%\bibliographystyle{plain}
+\bibliographystyle{ieeetr}
+\bibliography{reference}
+
+\end{document}
