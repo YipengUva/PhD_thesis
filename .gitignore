@@ -4,6 +4,7 @@ inst/doc
 illcdiss_guide/
 questions_defense/
 revisions/
+figures/
 *.sty
 *.eps
 *.cls
@@ -18,5 +19,4 @@ revisions/
 *.out
 *.synctex
 *.toc
-*.pdf 
-*.bib
+
