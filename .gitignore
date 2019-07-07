@@ -7,7 +7,6 @@ revisions/
 figures/
 *.sty
 *.eps
-*.cls
 *.aux
 *.ico
 *.bbl
