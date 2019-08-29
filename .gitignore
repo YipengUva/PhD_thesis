@@ -19,4 +19,6 @@ arXiv_V1/
 *.out
 *.synctex
 *.toc
+abstract/
+licence_agreement/
 
